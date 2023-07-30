@@ -2,9 +2,8 @@ import os, traceback, sys, parselmouth
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)
-from my_utils import load_audio
+from lib.audio import load_audio
 import pyworld
-from scipy.io import wavfile
 import numpy as np, logging
 
 logging.getLogger("numba").setLevel(logging.WARNING)
@@ -75,6 +74,13 @@ class FeatureInput(object):
                 frame_period=1000 * self.hop / self.fs,
             )
             f0 = pyworld.stonemask(x.astype(np.double), f0, t, self.fs)
+        elif f0_method == "rmvpe":
+            if hasattr(self, "model_rmvpe") == False:
+                from lib.rmvpe import RMVPE
+
+                print("loading rmvpe model")
+                self.model_rmvpe = RMVPE("rmvpe.pt", is_half=False, device="cpu")
+            f0 = self.model_rmvpe.infer_from_audio(x, thred=0.03)
         return f0
 
     def coarse_f0(self, f0):
@@ -86,7 +92,7 @@ class FeatureInput(object):
         # use 0 or 1
         f0_mel[f0_mel <= 1] = 1
         f0_mel[f0_mel > self.f0_bin - 1] = self.f0_bin - 1
-        f0_coarse = np.rint(f0_mel).astype(np.int)
+        f0_coarse = np.rint(f0_mel).astype(int)
         assert f0_coarse.max() <= 255 and f0_coarse.min() >= 1, (
             f0_coarse.max(),
             f0_coarse.min(),

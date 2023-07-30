@@ -1,10 +1,13 @@
-import numpy as np, parselmouth, torch, pdb
+import numpy as np, parselmouth, torch, pdb, sys, os
 from time import time as ttime
 import torch.nn.functional as F
 import scipy.signal as signal
 import pyworld, os, traceback, faiss, librosa, torchcrepe
 from scipy import signal
 from functools import lru_cache
+
+now_dir = os.getcwd()
+sys.path.append(now_dir)
 
 bh, ah = signal.butter(N=5, Wn=48, btype="high", fs=16000)
 
@@ -124,6 +127,15 @@ class VC(object):
             f0 = torchcrepe.filter.mean(f0, 3)
             f0[pd < 0.1] = 0
             f0 = f0[0].cpu().numpy()
+        elif f0_method == "rmvpe":
+            if hasattr(self, "model_rmvpe") == False:
+                from lib.rmvpe import RMVPE
+
+                print("loading rmvpe model")
+                self.model_rmvpe = RMVPE(
+                    "rmvpe.pt", is_half=self.is_half, device=self.device
+                )
+            f0 = self.model_rmvpe.infer_from_audio(x, thred=0.03)
         f0 *= pow(2, f0_up_key / 12)
         # with open("test.txt","w")as f:f.write("\n".join([str(i)for i in f0.tolist()]))
         tf0 = self.sr // self.window  # 每秒f0点数
@@ -184,7 +196,7 @@ class VC(object):
         with torch.no_grad():
             logits = model.extract_features(**inputs)
             feats = model.final_proj(logits[0]) if version == "v1" else logits[0]
-        if protect < 0.5:
+        if protect < 0.5 and pitch != None and pitchf != None:
             feats0 = feats.clone()
         if (
             isinstance(index, type(None)) == False
@@ -211,7 +223,7 @@ class VC(object):
             )
 
         feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
-        if protect < 0.5:
+        if protect < 0.5 and pitch != None and pitchf != None:
             feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
                 0, 2, 1
             )
@@ -223,7 +235,7 @@ class VC(object):
                 pitch = pitch[:, :p_len]
                 pitchf = pitchf[:, :p_len]
 
-        if protect < 0.5:
+        if protect < 0.5 and pitch != None and pitchf != None:
             pitchff = pitchf.clone()
             pitchff[pitchf > 0] = 1
             pitchff[pitchf < 1] = protect
